@@ -1,0 +1,20 @@
+Usar o SpringBoot para codificar microserviços facilita o desenvolvimento pois ele respeita
+o conceito de responsabilidade única por container.
+
+Os design patterns que ele implementa são:
+ - Singleton pattern
+ - Factory Method pattern
+ - Proxy pattern
+ - Template pattern
+ 
+ 
+ ASW Services 
+ 
+ ECS
+ EKS
+ EC2
+ Load Balance
+ Elastic Load Balance
+ CloudFormation
+ 
+ 
