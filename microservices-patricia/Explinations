@@ -1,3 +1,10 @@
+O intuito desse projeto é usar o springBoot com o sdk da amazon, para realizar um sistema distribuido simples.
+Usarei o Kafka para a parte de logs e mensageria inicialmente e posterioramente para processar os eventos. 
+Abaixo seguem alguns conceitos das tecnologias empregadas , após isso será feita a justificativa dessa arquitetura e seus prós e contras.
+Estou usando o kaban do proprio github para organizar o projeto.
+
+
+Microcrserviço, o que é? Porque usar? Como funciona e qual a dieferança para o Spring MVC ?
 Usar o SpringBoot para codificar microserviços facilita o desenvolvimento pois ele respeita
 o conceito de responsabilidade única por container.
 
@@ -17,4 +24,70 @@ Os design patterns que ele implementa são:
  Elastic Load Balance
  CloudFormation
  
+ 
+KAFKA POC
+PASSAGEM CONHECIMENTO KAFKA
+ 
+
+Conceitos Iniciais
+
+Um resumo do que seria uma plataforma de streaming: 
+Cada microserviço tem seu endpoint e gerará muitos dados que serão consumidos e publicados através da plataforma de streaming de records. A plataforma permite que o consumer e o producer sejam independentes e guarda os eventos criados internamente assegurando resiliência, oferecendo real time para o seu processamento. Os eventos são imutaveis e é responsabilidade do consumer manter o track destes , qualquer consumer pode acessar o broker.
+No coração do kafka nós temos o Kafka cluster que consiste nos múltiplos brokers e para gerenciá-los, fazer health-chek temos o zookeper. Brokers são o que os clients do kafka irão interagir, massivamente o producer e o consumer. 
+O producer usa o ProducerApi para escrever dados no kafka e o mesmo se aplica para o Consumer.Existe ainda dois Clients Apis importantes, o Source conector e o Sink Conector, sendo o primeiro responsavel conectar o banco , file system ao kafka e o outro por levar o dado do kafka para fora. E ainda o Kafka Streams responsavel por transformar o dado em real time e colocar novamente no kafka
+
+
+Kafka Topic 
+O Tópico pode ser entendido por analogia como uma tabela no banco de dados. É uma entidade no Kafka e possui um nome.Geralmente estão no broker, o nome do tópico é usado pelo producer e consumer para produzir e consumir dados. O consumer fica constantemente fazendo polling para verificar se existem dados ainda não consumidos usando o nome do tópico. O producer necessita ser estimulado para enviar o evento para o cluster, de acordo com o nome do topico que será notado pelo poll do consumer, será consumido e será processado pelo consumer. Porém uma vez que o consumer o processa, ele ainda reside internamente no cluster durante o tempo configurado.
+Kafka Partitions
+Partições são onde as mensagens realmente estão alocadas e vivem no tópico. O número de partições dentro do tópico varia. A relação entre o número de partições e tópicos pode ser calculada de acordo com a seguinte fórmula:
+  MAX(t/p, t/c)
+Onde:
+•	t: taxa de transferência desejada
+•	p: taxa de transferência do producer
+•	c: taxa de transferência do consumer (José, 2020)
+Escalabilidade dos eventos tem uma ligação fundamental com as partições.Cada uma delas é uma sequencia ordenada, imutável de records ,ou seja, uma vez o evento produzido ele não pode ser alterado.Cada record que reside na partição tem um numero sequencial associado chamado offset e cada partição é indepentende das outras. A ordenação é garantida apenas no nível da partição e isso deve ser levado em consideração caso os dados precisem ser lidos e produzidos em uma determinada ordem, eles devem ser feitos para a mesma partição.
+Produzindo e Consumindo eventos com chave
+Um evento produzido tem duas propriedades fundamentais: Chave e Valor.A chave pode ser opcional mas o valor é o conteudo do evento.Quando o producer é estimulado e produz o evento sem a chave o partitioner checa o evento e o distribui pelas partições existentes sem a garantia que o consumer os irá ler em uma ordem especifica.Quando a chave é passada o partitioner irá aplicar um hash sobre o evento para determinar a qual partição ele deverá seguir, e assim todos os eventos irão para a mesma particição se tiverem a mesma chave e serão consumidos em ordem na que forem enviados.
+
+
+Consumer Offset
+Qualquer evento dentro da partição terá uma chave única, o offset. O Consumer possui três estratégias para as ler:
+•	from-beginning(do começo);
+•	latest (quando o consumer estiver de pé);
+•	specif offset (de um offset especifico)
+o Consumer Offset serve como ponteiro para indicar qual partição deverá ser lida , mesmo se o tópico ficar fora , após ler cada partição o consumer grava no offset o que ele leu então quando voltar sabe exatamente que partição deverá ser lida.
+
+Consumer Group
+O consumer group é um atributo mandatório para o consumer e desempenha um papel fundamental para a escalabilidade do consumer.Digamos que temos um topico com um group id e  4 partições, uma única thread irá ficar fazendo poll para consumir os eventos. O producer vai enviar os eventos mais rápido que o consumer irá consumi-los, causando um lag e saindo do conceito de real time. Isso pode ser resolvido instqanciando mais um consumer com o mesmo consumer group, assim as particições serão divididas pelos consumers . Os records serão lidos paralelamente porém deve ser observado que o consumer pool é single thread então se existe um número de partições menor que as instancias de consumer , ele ficará ocioso. O broker gerencia o consumer group coordenando – os.
+Server.properties e Zookeeper.properties
+Algumas propriedades necessitam serem observadas no script de configuração dos properties:
+Server.properties é o arquivo de configuração do kafka . Segue um resumo de algumas das propriedades contidas no arquivo:
+
+
+1.	broker.id=0
+2.	listeners=PLAINTEXT://localhost:9093
+3.	auto.create.topics.enable=true
+4.	log.dirs=/kafka-logs
+5.	offsets.topic.replication.factor=1
+6.	transaction.state.log.replication.factor=1
+7.	transaction.state.log.min.isr=1
+8.	log.retention.hours=168
+9.	zookeeper.connect=localhost:2181
+10.	zookeeper.connection.timeout.ms=18000
+11.	group.initial.rebalance.delay.ms=0
+
+Zookeeper.properties é o arquivo de configuração do Zookeeper. Segue um resumo de algumas das propriedades contidas no arquivo:
+1.	dataDir=/kafka/zookeeper-log
+2.	clientPort=2181
+3.	maxClientCnxns=0
+4.	admin.enableServer=false
+
+Kafka como uma plataforma streming distríbuida
+O que isso significa?
+Um sistema distribuido é uma coleção de sistemas trabalhando juntos para entregar um valor. Dado um estimulo, um request de um client o sistema intrega o esforço de todos os outros que o compõe para entregar o response solicitado. Sistemas distribuidos tem por caracteristicas serem altamente disponeveis e tolerantes a falhas, se um dos sistemas cair, os outros dão contam do esforço. A carga é distribuida igualmente pelos nós e lidar com concorrencia é algo fácil.
+Assim afirmar que Kafka é uma plataforma distribuida significa o cluster do kafka, seus brokers são gerenciados pelo zookeeper , mandando status para serem monitorados (health check) por ele, e assim darem sequencia a atender os requests (producers) e response (consumer) solicitados e quando não puderem operar, o zookeeper irá distribuir os eventos pelos brokers disponiveis.
+
+Kafka Stremas e KSQL porque?
+
  
